@@ -6,43 +6,61 @@ from scipy.optimize import minimize
 import yfinance as yf
 
 
+# ============================================================
+# 1. ANALYZE TICKERS
+# ============================================================
 def analyze_tickers(tickers_list, start, end):
     """
-    Download price data and compute returns/visualizations.
+    Download price data & compute return features.
     Returns monthly returns DataFrame.
     """
+
+    print("\n=== Downloading Stock Data ===")
     prices = {}
 
     for t in tickers_list:
         df = yf.download(
-            t, start=start, end=end,
-            interval="1d", auto_adjust=False, progress=False
+            t,
+            start=start,
+            end=end,
+            interval="1d",
+            auto_adjust=False,
+            progress=False,
         )
         if not df.empty:
             prices[t] = df
+        else:
+            print(f"Warning: No data for {t}")
 
+    # Build Adj Close DataFrame
     first = tickers_list[0]
     prep_data = pd.DataFrame(
-        prices[first]['Adj Close']).rename(columns={'Adj Close': first})
+        prices[first]["Adj Close"]
+    ).rename(columns={"Adj Close": first})
 
     for t in tickers_list[1:]:
-        prep_data[t] = prices[t]['Adj Close']
+        prep_data[t] = prices[t]["Adj Close"]
 
-    return_data = prep_data.pct_change().dropna()
+    # Daily Returns
+    daily_returns = prep_data.pct_change().dropna()
 
-    cumulative_returns = (1 + return_data).cumprod() - 1
+    # Cumulative Plot
+    cumulative_returns = (1 + daily_returns).cumprod() - 1
     cumulative_returns.plot(figsize=(12, 6))
-    plt.title("Cumulative Returns")
+    plt.title("Cumulative Percentage Returns")
     plt.grid(True)
     plt.show()
 
+    # Monthly Returns
     monthly_returns = prep_data.resample("ME").ffill().pct_change().dropna()
 
+    # Covariance Heatmap
     plt.figure(figsize=(10, 8))
     sns.heatmap(monthly_returns.cov(), annot=True, cmap="coolwarm")
     plt.title("Covariance Matrix (Monthly Returns)")
     plt.show()
 
+    # Correlation Heatmap
     plt.figure(figsize=(10, 8))
     sns.heatmap(monthly_returns.corr(), annot=True, cmap="coolwarm")
     plt.title("Correlation Matrix (Monthly Returns)")
@@ -51,6 +69,9 @@ def analyze_tickers(tickers_list, start, end):
     return monthly_returns
 
 
+# ============================================================
+# 2. OPTIMIZATION ENGINE
+# ============================================================
 def run_portfolio_womack(monthly_returns, return_floor=0.015):
 
     df = monthly_returns.copy()
@@ -81,14 +102,13 @@ def run_portfolio_womack(monthly_returns, return_floor=0.015):
             constraints=constraints,
             method="SLSQP",
         )
+
         w = res.x
         return w, port_return(w), port_risk(w)
 
+    # Sweep risk levels
     risk_levels = np.arange(0.001, 0.01, 0.0005)
-
-    allocations = []
-    rewards = []
-    risks = []
+    allocations, rewards, risks = [], [], []
 
     for r in risk_levels:
         w, ret, risk_val = optimize_for_risk_limit(r)
@@ -99,23 +119,18 @@ def run_portfolio_womack(monthly_returns, return_floor=0.015):
     alloc_df = pd.DataFrame(allocations, index=risk_levels, columns=df.columns)
 
     reward_df = pd.DataFrame(
-        {
-            "risk_limit": risk_levels,
-            "risk": risks,
-            "return": rewards,
-        }
+        {"risk_limit": risk_levels, "risk": risks, "return": rewards}
     )
-
     return alloc_df, reward_df
 
 
+# ============================================================
+# 3. GLUE FUNCTION
+# ============================================================
 def full_portfolio_pipeline(tickers, start, end):
     """
-    Glue function:
-    1. Runs analyze_tickers()
-    2. Feeds returns into run_portfolio_womack()
+    Runs both ticker analysis & portfolio optimization.
     """
-
     monthly_returns = analyze_tickers(tickers, start, end)
     alloc_df, reward_df = run_portfolio_womack(monthly_returns)
 
@@ -124,3 +139,22 @@ def full_portfolio_pipeline(tickers, start, end):
         "allocations": alloc_df,
         "reward_table": reward_df,
     }
+
+
+# ============================================================
+# 4. DEMO MODE
+# ============================================================
+if __name__ == "__main__":
+    print("\n============================")
+    print("     DEMO MODE ACTIVATED")
+    print("============================\n")
+
+    demo_tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL"]
+    demo_start = "2020-01-01"
+    demo_end = "2025-01-01"
+
+    results = full_portfolio_pipeline(
+        tickers=demo_tickers,
+        start=demo_start,
+        end=demo_end,
+    )

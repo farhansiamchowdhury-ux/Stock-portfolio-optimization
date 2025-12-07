@@ -1,4 +1,4 @@
-###Step one: clone the path: https://github.com/farhansiamchowdhury/stock-portfolio-optimization
+###Step one: clone the path: https://github.com/farhansiamchowdhury-ux/stock-portfolio-optimization
 ##Step two:
 
 **##import the requirements:**
